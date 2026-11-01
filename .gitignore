@@ -1,2 +1,3 @@
 rcs_abc/results/*.rds
 rcs_abc/data/
+rcs_abc/results/log_*.txt
