@@ -72,7 +72,7 @@ the prior: 0 means you learned nothing, 1 means the parameter is pinned down.
 
 The truth was inside every interval, so the sampler works. With one RCS area time series,
 though, the posterior for nearly every parameter is essentially the prior. Adding the front
-positions constrains only `r_storm`. The posterior correlation between b_rcs0 and b_rcs1 is -0.64,
+positions constrains only `r_storm`. The weighted posterior correlation between b_rcs0 and b_rcs1 is -0.55 (see `06_rcs_ridge.png`),
 which means the data only fixes the RCS logistic curve along one direction, not both coefficients.
 
 This means the paper's single best-fit set (Table 3) is one point on a large flat region,
@@ -85,3 +85,17 @@ more information, not a better algorithm:
   observed presence or absence. That uses the 140+ survey points, not just their hull.
 - **Fewer free parameters.** Fix or tie parameters the data can't separate. For example, b_st0 = 4.25
   puts q_nri at about 0.99 everywhere, so NRI barely matters and b_st0/b_st1 are close to unidentifiable by design.
+
+## Figures
+
+`Rscript scripts/plot_results.R` writes these to `results/figures/`:
+
+| File | Shows |
+|---|---|
+| `01_posterior_marginals.png` | Prior vs posterior density for each parameter, with the true value |
+| `02_shrinkage.png` | How much each 90% interval narrowed compared with the prior (the key diagnostic) |
+| `03_credible_intervals.png` | 90% credible intervals and medians vs the true value |
+| `04_tolerance_schedule.png` | Tolerance ε against cumulative simulations (convergence) |
+| `05_posterior_predictive.png` | Area and west/east fronts re-simulated from the posterior vs observed |
+| `06_rcs_ridge.png` | Joint b_rcs0/b_rcs1 posterior: the data constrains a combination, not each coefficient |
+| `07_ca_maps.png` | CA state maps at ticks 0, 5 and 10 |
