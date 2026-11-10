@@ -1,3 +1,5 @@
 rcs_abc/results/*.rds
 rcs_abc/data/
 rcs_abc/results/log_*.txt
+rcs_abc/results/ethan_pp/
+rcs_abc/results/ethan/

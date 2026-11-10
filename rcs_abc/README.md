@@ -99,3 +99,35 @@ more information, not a better algorithm:
 | `05_posterior_predictive.png` | Area and west/east fronts re-simulated from the posterior vs observed |
 | `06_rcs_ridge.png` | Joint b_rcs0/b_rcs1 posterior: the data constrains a combination, not each coefficient |
 | `07_ca_maps.png` | CA state maps at ticks 0, 5 and 10 |
+
+## Running ABC on Ethan's actual model (real data)
+
+`R/ethan_adapter.R` calls Ethan's `run_ca_two_layer()` from `Functions/CellularAutomata.R`
+**unchanged**, so ABC uses the real model rather than the stand-in in `R/rcs_ca.R`.
+Inputs are built with Ethan's own `Initialize.R` + `PreProcessing.R`, and the observed
+summaries are computed on that same grid, so simulated and observed values line up cell for cell.
+
+```bash
+Rscript tests/test_fast_diamond.R ../Functions        # check: the speed-up is exact
+sbatch scripts/run_abc_ethan.slurm /path/to/ethan_project   # project with Functions/ and Data/
+```
+
+- **Speed.** One simulation (2000-2025, r = 37, 484,272 cells) takes about 40 s with the
+  original code. 85% of that is `.manhattan_diamond_sum_grid`. `R/fast_diamond.R` computes the same
+  sums with a rotated summed-area table: identical output (200 random grids, plus a full
+  same-seed simulation), and about 13 s per simulation. A 15,000-simulation ABC run is about
+  55 core-hours: roughly 2 h on 32 cores.
+- **Observed data** (default): cumulative RCS hull area plus west/east fronts for 2021-2023.
+  2017 is the introduction itself, so the model matches it by construction. 2025 is excluded
+  because it has 2 records (`ABC_YEARS` to change).
+- **Prior**: the union of history-matching ranges R7-R10 (Table 4), truncated with
+  `constraint_reasonable_logits` from `HMParameters.R`.
+
+### Storm schedule bug in CellularAutomata.R
+
+`resolve_storms_this_tick()` indexes `STORMS_PER_TICK` by tick, and tick 1 = 2001
+(`START_YEAR = 2000`). So `c(4, 7, 4, 5, 8, 4, 3, 2, 5, 1)` is applied to **2001-2010**, and the
+last value (**1 storm**) is reused for **every year from 2011 on**. That includes the whole RCS
+period, 2017-2025. The manuscript says these counts describe 2016-2025.
+`STORM_MODE=as_coded` reproduces the model as it runs now. `STORM_MODE=calendar` puts the counts
+on their stated years and needs `STORMS_PRE_2016` (15 values for 2001-2015).

@@ -12,24 +12,40 @@
 # ---------------------------------------------------------------------------
 # Prior: independent uniforms (optionally integer-valued)
 # ---------------------------------------------------------------------------
-make_uniform_prior <- function(lower, upper, integer = character(0)) {
+make_uniform_prior <- function(lower, upper, integer = character(0),
+                               constraint = NULL) {
+  # constraint: optional function(named theta) -> TRUE/FALSE. The prior is the
+  # uniform box truncated to where it is TRUE (e.g. HMParameters.R's
+  # constraint_reasonable_logits). Truncation only rescales a uniform density,
+  # so the ABC weights need no other change.
   stopifnot(identical(names(lower), names(upper)), all(upper > lower))
   is_int <- names(lower) %in% integer
+  ok <- function(theta) is.null(constraint) || isTRUE(constraint(theta))
+  draw_box <- function(n) {
+    m <- sapply(seq_along(lower), function(k) {
+      if (is_int[k]) sample(lower[k]:upper[k], n, replace = TRUE)
+      else runif(n, lower[k], upper[k])
+    })
+    m <- matrix(m, n)
+    colnames(m) <- names(lower)
+    m
+  }
   list(
     names = names(lower), lower = lower, upper = upper, is_int = is_int,
     sample = function(n) {
-      m <- sapply(seq_along(lower), function(k) {
-        if (is_int[k]) sample(lower[k]:upper[k], n, replace = TRUE)
-        else runif(n, lower[k], upper[k])
-      })
-      m <- matrix(m, n)
-      colnames(m) <- names(lower)
-      m
+      out <- matrix(numeric(0), 0, length(lower), dimnames = list(NULL, names(lower)))
+      while (nrow(out) < n) {
+        m <- draw_box(max(2L * (n - nrow(out)), 100L))
+        keep <- apply(m, 1, function(v) ok(setNames(v, names(lower))))
+        out <- rbind(out, m[keep, , drop = FALSE])
+      }
+      out[seq_len(n), , drop = FALSE]
     },
-    # prior density up to a constant: 1 inside the box, 0 outside
+    # prior density up to a constant: 1 inside the (truncated) box, 0 outside
     inside = function(theta) {
       all(theta >= lower & theta <= upper) &&
-        all(abs(theta[is_int] - round(theta[is_int])) < 1e-9)
+        all(abs(theta[is_int] - round(theta[is_int])) < 1e-9) &&
+        ok(setNames(theta, names(lower)))
     }
   )
 }
