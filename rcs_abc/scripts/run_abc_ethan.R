@@ -8,9 +8,11 @@
 # Settings are environment variables so a SLURM script can change them:
 #   ABC_PARTICLES (500)  ABC_MAX_GEN (12)  ABC_CORES (all detected)
 #   ABC_YEARS ("2021,2022,2023")  -- 2025 is excluded by default: 2 records.
-#   ABC_STATS ("area,west,east")
-#   STORM_MODE ("as_coded" | "calendar")  -- READ THE WARNING BELOW
-#   STORMS_PRE_2016 (needed for calendar mode, comma list for 2001-2015)
+#   ABC_STATS ("area,west")  -- east front excluded: surveys moved east over
+#                                time, so it tracks survey effort, not spread
+#   START_YEAR (2016)  -- Phragmites seeded from records up to this year
+#   STORM_MODE ("calendar" | "as_coded")  -- calendar = counts on stated years
+#   STORMS_PRE_2016 (only if START_YEAR < 2016 in calendar mode)
 suppressPackageStartupMessages({library(data.table); library(Matrix)})
 args <- commandArgs(trailingOnly = TRUE)
 proj <- normalizePath(if (length(args)) args[1] else "..")
@@ -19,52 +21,46 @@ env_num <- function(x, d) as.numeric(Sys.getenv(x, d))
 n_particles <- env_num("ABC_PARTICLES", 500); max_gen <- env_num("ABC_MAX_GEN", 12)
 ncores <- env_num("ABC_CORES", parallel::detectCores())
 obs_years <- as.integer(strsplit(Sys.getenv("ABC_YEARS", "2021,2022,2023"), ",")[[1]])
-stats <- strsplit(Sys.getenv("ABC_STATS", "area,west,east"), ",")[[1]]
-storm_mode <- Sys.getenv("STORM_MODE", "as_coded")
+stats <- strsplit(Sys.getenv("ABC_STATS", "area,west"), ",")[[1]]
+storm_mode <- Sys.getenv("STORM_MODE", "calendar")
 
-# ---- 1. Build rcs_data with Ethan's own Initialize.R + PreProcessing.R ----
-# Same CONFIG values as RCS_CA_Procedure.R (only the inputs these two files read).
-DIRS <- list(root = proj, func_dir = file.path(proj, "Functions"),
-             data_dir = file.path(proj, "Data"), outputs_dir = file.path(getwd(), "results", "ethan_pp"))
-dir.create(DIRS$outputs_dir, recursive = TRUE, showWarnings = FALSE)
-DATA_FILE <- "Southeast_Data_Clip.csv"
-OCCURRENCE_FILE <- file.path(DIRS$data_dir, "RCS_Phragmites_Data_10_17_26.csv")
-START_YEAR <- 2000L; RCS_INTRO_YEAR <- 2017L; GRID_EPSG <- 32615L; GRID_RESOLUTION_M <- 1000
-CLIP_BOUNDS <- c(xmin = 49530.8674345585, xmax = 1417530.86743456,
-                 ymin = 3112714.25764237, ymax = 3466714.25764237)
-BASE_MODEL <- "COLD"; OUTPUT_LABEL <- "ABC"; USE_FIXED_SEED <- FALSE; RUN_PARALLEL <- FALSE
-source(file.path(DIRS$func_dir, "Initialize.R"))
-source(file.path(DIRS$func_dir, "PreProcessing.R"))
+# ---- 1. Inputs with Ethan's own Initialize.R + PreProcessing.R ----
+start_year <- as.integer(Sys.getenv("START_YEAR", "2016"))
+source("R/ethan_inputs.R")
+rcs_data <- build_ethan_inputs(proj, start_year = start_year)
+START_YEAR <- start_year; RCS_INTRO_YEAR <- 2017L; BASE_MODEL <- "COLD"
+DIRS <- list(func_dir = file.path(proj, "Functions"))
+cat("START_YEAR =", start_year, "| PHRAG seed cells (records <= START_YEAR):",
+    sum(rcs_data$Initial_Phrag), "| RCS introduction cells (2017):", sum(rcs_data$RCS_IntroSeed), "\n")
 
 # ---- 2. Observed summaries from the SAME grid (cumulative RCS detections) ----
-first <- rcs_data$RCS_FirstDetectedYear
-obs_tab <- t(vapply(obs_years, function(y) {
-  occ <- which(!is.na(first) & first <= y)
-  c(area = hull_area(rcs_data$row[occ], rcs_data$col[occ], 1), n_rcs = length(occ),
-    west = min(rcs_data$col[occ]), east = max(rcs_data$col[occ]))
-}, numeric(4)))
-rownames(obs_tab) <- obs_years
-cat("\nObserved summaries (km2 and km from the grid's west edge):\n"); print(obs_tab)
+obs_tab <- observed_summaries(rcs_data, obs_years)
+cat("\nObserved summaries (km2; fronts in km from the grid's west edge):\n"); print(obs_tab)
 obs <- as.vector(obs_tab[, stats, drop = FALSE])
 
 # ---- 3. Storm schedule ----
+# calendar: the manuscript's NWS counts on their own years (2016 = first value).
+# With START_YEAR >= 2016 no unknown pre-2016 counts are needed.
+n_ticks <- max(obs_years) - START_YEAR
 if (storm_mode == "as_coded") {
-  storms <- storm_schedule(mode = "as_coded", n_ticks = max(obs_years) - START_YEAR)
-  warning("STORM_MODE=as_coded reproduces CellularAutomata.R as it runs today: the 10 ",
-          "STORMS_PER_TICK values fall on 2001-2010 and every year from 2011 on gets 1 storm. ",
-          "The manuscript says the values are 2016-2025. Set STORM_MODE=calendar once ",
-          "pre-2016 counts are known.", call. = FALSE, immediate. = TRUE)
+  storms <- storm_schedule(mode = "as_coded", start_year = START_YEAR, n_ticks = n_ticks)
+  warning("STORM_MODE=as_coded reproduces CellularAutomata.R's tick indexing, which does ",
+          "not put the counts on their stated years.", call. = FALSE, immediate. = TRUE)
 } else {
   pre <- as.integer(strsplit(Sys.getenv("STORMS_PRE_2016", ""), ",")[[1]])
-  if (length(pre) != 15L) stop("calendar mode needs STORMS_PRE_2016 with 15 values (2001-2015)")
-  storms <- storm_schedule(mode = "calendar", n_ticks = max(obs_years) - START_YEAR,
-                           pre_2016 = 0L)
-  storms[1:15] <- pre
+  storms <- storm_schedule(mode = "calendar", start_year = START_YEAR, n_ticks = n_ticks,
+                           pre_2016 = if (START_YEAR >= 2016L) 0L else NA_integer_)
+  if (START_YEAR < 2016L) {
+    if (length(pre) != 2016L - START_YEAR - 1L)
+      stop("START_YEAR < 2016 in calendar mode needs STORMS_PRE_2016 for ",
+           START_YEAR + 1L, "-2015")
+    storms[seq_along(pre)] <- pre
+  }
 }
 cat("Storms per tick (", START_YEAR + 1, "-", max(obs_years), "): ", paste(storms, collapse = " "), "\n", sep = "")
 
 # ---- 4. Simulator and prior ----
-sim <- make_ethan_simulator(DIRS$func_dir, rcs_data, start_year = START_YEAR,
+sim <- make_ethan_simulator(file.path(proj, "Functions"), rcs_data, start_year = START_YEAR,
                             intro_year = RCS_INTRO_YEAR, obs_years = obs_years,
                             storms = storms, base_model = BASE_MODEL)
 simulate <- function(theta) as.vector(sim(theta)[, stats, drop = FALSE])

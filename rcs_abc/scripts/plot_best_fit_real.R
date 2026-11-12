@@ -1,9 +1,10 @@
 # Figure for scripts/check_best_fit_real.R output.
-x <- readRDS("results/ethan/check_best_fit_real.rds")
+start <- Sys.getenv("START_YEAR", "2000")
+x <- readRDS(sprintf("results/ethan/check_best_fit_real_start%s.rds", start))
 COL <- c(as_coded = "#eb6834", calendar = "#2a78d6")
 LAB <- c(as_coded = "Storms as coded (1/yr after 2010)", calendar = "Storms on stated years (2001-15 = 4, placeholder)")
 yrs <- as.numeric(rownames(x$obs))
-png("results/ethan/best_fit_real.png", 1800, 700, res = 150)
+png(sprintf("results/ethan/best_fit_real_start%s.png", start), 1800, 700, res = 150)
 layout(matrix(c(1, 1, 1, 2, 3, 4), 2, byrow = TRUE), heights = c(0.14, 1))
 par(mar = c(0, 0, 0, 0)); plot.new()
 legend("center", horiz = TRUE, bty = "n", legend = c(LAB, "Observed"), col = c(COL, "#0b0b0b"),
