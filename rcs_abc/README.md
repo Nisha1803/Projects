@@ -131,3 +131,40 @@ last value (**1 storm**) is reused for **every year from 2011 on**. That include
 period, 2017-2025. The manuscript says these counts describe 2016-2025.
 `STORM_MODE=as_coded` reproduces the model as it runs now. `STORM_MODE=calendar` puts the counts
 on their stated years and needs `STORMS_PRE_2016` (15 values for 2001-2015).
+
+### Real-data result (preliminary: 200 particles, stopped after generation 5)
+
+Settings: START_YEAR = 2016 (Phragmites seeded from records), storm counts on their stated
+years, fitted to hull area + west front for 2021-2023. 9,800 simulations, final tolerance 2.73,
+acceptance 4.6%. Stopped on purpose: acceptance was falling fast and the posterior had stopped
+moving. Reproduce the table and figures with `Rscript scripts/plot_real_abc.R /path/to/ethan_project`.
+
+Shrinkage is measured against the **truncated** prior (the logit constraint applied), not the
+bounding box. Against the box, the constraint alone makes b_ph1 look about 30% "learned".
+
+| param | median | 90% CI | prior 90% | shrink |
+|---|---|---|---|---|
+| b_ph0 | -4.82 | [-6.07, -3.27] | [-6.15, -3.23] | 0.04 |
+| b_ph1 | 5.75 | [4.45, 8.17] | [4.36, 7.77] | -0.09 |
+| b_ph2 | 1.08 | [0.13, 2.55] | [0.09, 2.83] | 0.12 |
+| b_rcs0 | -5.35 | [-6.63, -3.36] | [-6.88, -3.49] | 0.03 |
+| b_rcs1 | 7.02 | [5.16, 9.82] | [5.14, 9.34] | -0.11 |
+| b_rcs2 | 1.08 | [0.09, 3.48] | [0.12, 3.69] | 0.05 |
+| b_st0 | 3.27 | [0.70, 5.69] | [0.54, 5.72] | 0.04 |
+| b_st1 | 1.92 | [0.14, 3.07] | [0.17, 3.09] | 0.00 |
+| r_storm | 31 | [22, 38] | [21, 39] | 0.11 |
+
+**The real data do not identify any of the 9 parameters.** Almost every parameter set
+the history-matching ranges allow fits three years of hull area and west front equally well. The
+posterior-predictive check (`results/ethan/figures/04_posterior_predictive.png`) shows two
+structural problems that more ABC generations cannot fix:
+- **East front:** the model stays at about 840 km (90% band reaches 876 km by 2025). The surveys record 906 km
+  from 2022, so the model cannot produce the east extent at all (the east front was not fitted).
+- **RCS-occupied cells:** the model predicts thousands of cells (posterior median about 1,900 in 2023).
+  The observed data have 273 detected cells. The model fills the hull, while the survey data are
+  presence-only detections, so the two are not the same quantity. Comparing them needs a
+  detection/observation model, not a different parameter set.
+
+Figures in `results/ethan/figures/`: `01_posterior_marginals`, `02_shrinkage`,
+`03_tolerance_schedule`, `04_posterior_predictive` (2017-2025, fitted vs. unfitted points),
+`05_parameter_ridges`.

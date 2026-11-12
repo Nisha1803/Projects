@@ -85,6 +85,8 @@ message(sprintf("one simulation: %.1f s on this machine -> roughly %.1f h for 15
                 tt, tt * 15000 / ncores / 3600, ncores))
 
 # ---- 5. ABC-SMC ----
+# ABC_SETUP_ONLY=1 stops here (used by plot_real_abc.R to rebuild the simulator).
+if (Sys.getenv("ABC_SETUP_ONLY", "0") != "1") {
 dir.create("results/ethan", recursive = TRUE, showWarnings = FALSE)
 fit <- abc_smc(simulate, prior, obs, n_particles = n_particles, alpha = 0.5,
                max_gen = max_gen, min_acc_rate = 0.01, ncores = ncores,
@@ -95,3 +97,4 @@ saveRDS(fit, "results/ethan/abc_fit.rds")
 tab <- posterior_table(fit)
 print(round(tab, 3))
 write.csv(tab, "results/ethan/abc_posterior.csv")
+}
