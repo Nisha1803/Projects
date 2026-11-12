@@ -136,7 +136,9 @@ par_map <- function(X, FUN, ncores) {
 abc_smc <- function(simulate, prior, obs, n_particles = 500, alpha = 0.5,
                     max_gen = 15, min_acc_rate = 0.01, n_pilot = NULL,
                     ncores = 1, checkpoint = NULL, verbose = TRUE,
-                    batch_size = NULL) {
+                    batch_size = NULL, resume = FALSE) {
+  # resume = TRUE continues from `checkpoint` (written after every generation)
+  # if it exists and was made with the same observed data.
   p <- length(prior$names)
   if (is.null(n_pilot)) n_pilot <- n_particles
   if (is.null(batch_size)) batch_size <- max(ncores * 25, 100)
@@ -146,30 +148,46 @@ abc_smc <- function(simulate, prior, obs, n_particles = 500, alpha = 0.5,
     out
   }
 
-  # ---- generation 0: prior predictive, also used to scale summaries ----
-  t0 <- Sys.time()
-  X <- prior$sample(max(n_pilot, n_particles))
-  S <- do.call(rbind, par_map(split(X, row(X)),
-                              function(v) sim_safe(setNames(v, prior$names)),
-                              ncores))
-  scale <- apply(S, 2, mad, na.rm = TRUE)
-  zero <- !is.finite(scale) | scale == 0
-  scale[zero] <- apply(S[, zero, drop = FALSE], 2, sd, na.rm = TRUE)
-  dist <- make_distance(obs, scale)
-  d <- apply(S, 1, dist)
-  keep <- order(d)[seq_len(n_particles)]      # best N from the prior sample
-  X <- X[keep, , drop = FALSE]; d <- d[keep]; S <- S[keep, , drop = FALSE]
-  w <- rep(1 / n_particles, n_particles)
-  eps <- max(d)
-  n_sim_total <- max(n_pilot, n_particles)
+  ck <- if (isTRUE(resume) && !is.null(checkpoint) && file.exists(checkpoint)) readRDS(checkpoint) else NULL
+  if (!is.null(ck) && !isTRUE(all.equal(ck$obs, obs))) {
+    warning("checkpoint was made with different observed data; starting fresh")
+    ck <- NULL
+  }
+  if (!is.null(ck)) {
+    history <- ck$history; scale <- ck$scale
+    dist <- make_distance(obs, scale)
+    last <- history[[length(history)]]
+    X <- last$theta; w <- last$weights; d <- last$dist; S <- last$stats
+    n_sim_total <- last$n_sim
+    if (verbose) message(sprintf("resuming after gen %d (eps = %.3f, %d sims so far)",
+                                 last$gen, last$eps, n_sim_total))
+  } else {
+    # ---- generation 0: prior predictive, also used to scale summaries ----
+    t0 <- Sys.time()
+    X <- prior$sample(max(n_pilot, n_particles))
+    S <- do.call(rbind, par_map(split(X, row(X)),
+                                function(v) sim_safe(setNames(v, prior$names)),
+                                ncores))
+    scale <- apply(S, 2, mad, na.rm = TRUE)
+    zero <- !is.finite(scale) | scale == 0
+    scale[zero] <- apply(S[, zero, drop = FALSE], 2, sd, na.rm = TRUE)
+    dist <- make_distance(obs, scale)
+    d <- apply(S, 1, dist)
+    keep <- order(d)[seq_len(n_particles)]      # best N from the prior sample
+    X <- X[keep, , drop = FALSE]; d <- d[keep]; S <- S[keep, , drop = FALSE]
+    w <- rep(1 / n_particles, n_particles)
+    eps <- max(d)
+    n_sim_total <- max(n_pilot, n_particles)
+  
+    history <- list(list(gen = 0, eps = eps, theta = X, weights = w, dist = d,
+                         stats = S, n_sim = n_sim_total, acc_rate = NA,
+                         time = Sys.time() - t0))
+    if (verbose) message(sprintf("gen 0: eps = %.3f  (prior sample of %d)",
+                                 eps, n_sim_total))
+  }
+  g_start <- length(history)
 
-  history <- list(list(gen = 0, eps = eps, theta = X, weights = w, dist = d,
-                       stats = S, n_sim = n_sim_total, acc_rate = NA,
-                       time = Sys.time() - t0))
-  if (verbose) message(sprintf("gen 0: eps = %.3f  (prior sample of %d)",
-                               eps, n_sim_total))
-
-  for (g in seq_len(max_gen)) {
+  for (g in seq.int(g_start, length.out = max(0, max_gen - g_start + 1))) {
     t0 <- Sys.time()
     eps <- as.numeric(quantile(d, alpha))
     kern <- make_kernel(X, w, prior$is_int)

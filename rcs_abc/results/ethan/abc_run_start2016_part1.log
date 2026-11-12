@@ -1,0 +1,13 @@
+START_YEAR = 2016 | PHRAG seed cells (records <= START_YEAR): 130 | RCS introduction cells (2017): 137 
+
+Observed summaries (km2; fronts in km from the grid's west edge):
+      area n_rcs west east
+2021 50302   216  327  827
+2022 59138   255  327  906
+2023 62833   273  317  906
+Storms per tick (2017-2023): 7 4 5 8 4 3 2
+one simulation: 5.6 s on this machine -> roughly 5.8 h for 15,000 sims on 4 cores
+gen 0: eps = 50.155  (prior sample of 200)
+gen 1: eps = 16.886  acc = 0.515  ESS = 143  sims so far = 600  (477.3 s)
+gen 2: eps = 8.717  acc = 0.274  ESS = 147  sims so far = 1400  (982.8 s)
+gen 3: eps = 5.251  acc = 0.152  ESS = 109  sims so far = 2800  (1677.8 s)

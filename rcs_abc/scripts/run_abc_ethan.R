@@ -88,7 +88,8 @@ message(sprintf("one simulation: %.1f s on this machine -> roughly %.1f h for 15
 dir.create("results/ethan", recursive = TRUE, showWarnings = FALSE)
 fit <- abc_smc(simulate, prior, obs, n_particles = n_particles, alpha = 0.5,
                max_gen = max_gen, min_acc_rate = 0.01, ncores = ncores,
-               checkpoint = "results/ethan/abc_checkpoint.rds")
+               checkpoint = "results/ethan/abc_checkpoint.rds",
+               resume = Sys.getenv("ABC_RESUME", "0") == "1")
 fit$obs_tab <- obs_tab; fit$stats <- stats; fit$storms <- storms
 saveRDS(fit, "results/ethan/abc_fit.rds")
 tab <- posterior_table(fit)
